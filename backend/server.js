@@ -11,8 +11,11 @@ import orderRouter from './routes/orderRoute.js'
 // App Config
 const app = express()
 app.use(cors({
-  origin: "https://forever-frontend-2rea281gj-sriram-garas-projects.vercel.app"
+  origin: "https://forever-frontend-2rea281gj-sriram-garas-projects.vercel.app",
+  credentials: true,
+  optionsSuccessStatus: 200
 }));
+
 const port = process.env.PORT || 4000
 connectDB()
 connectCloudinary()
