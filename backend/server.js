@@ -10,16 +10,12 @@ import orderRouter from './routes/orderRoute.js'
 
 // App Config
 const app = express()
-app.use((req, res, next) => {
-  res.setHeader("Access-Control-Allow-Origin", "https://forever-frontend-2rea281gj-sriram-garas-projects.vercel.app");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  if (req.method === "OPTIONS") return res.sendStatus(200);
-  next();
-});
-
 app.use(cors({
-  origin: "https://forever-frontend-2rea281gj-sriram-garas-projects.vercel.app",
+  origin: [
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "https://forever-frontend-2rea281gj-sriram-garas-projects.vercel.app"
+  ],
   credentials: true
 }));
 
