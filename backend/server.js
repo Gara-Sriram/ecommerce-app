@@ -14,7 +14,8 @@ app.use(cors({
   origin: [
     "http://localhost:5173",
     "http://localhost:5174",
-    "https://ecommerce-app-yio8.vercel.app"
+    "https://ecommerce-app-yio8.vercel.app",   // frontend
+    "https://ecommerce-app-qh9m.vercel.app"    // admin
   ],
   credentials: true
 }));
