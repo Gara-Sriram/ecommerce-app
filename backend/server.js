@@ -12,7 +12,9 @@ import orderRouter from './routes/orderRoute.js'
 const app = express()
 app.use(cors({
   origin: [
-    "https://ecommerce-app-yio8.vercel.app/"
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "https://ecommerce-app-yio8.vercel.app"
   ],
   credentials: true
 }));
