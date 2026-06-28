@@ -2,6 +2,7 @@ import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
 import mongoSanitize from 'express-mongo-sanitize'
+import cookieParser from 'cookie-parser'
 import 'dotenv/config'
 import connectDB from './config/mongodb.js'
 import connectCloudinary from './config/cloudinary.js'
@@ -36,6 +37,9 @@ app.use(cors({
 
 // Parse JSON bodies
 app.use(express.json())
+
+// Parse cookies (needed for httpOnly refresh token)
+app.use(cookieParser())
 
 // Sanitize all incoming request data against NoSQL injection
 // e.g., { "email": { "$gt": "" } } gets stripped to {}
