@@ -4,6 +4,7 @@ import LatestCollection from '../components/LatestCollection'
 import BestSeller from '../components/BestSeller'
 import OurPolicy from '../components/OurPolicy'
 import NewsletterBox from '../components/NewsletterBox'
+import NearbyDeals from '../components/NearbyDeals'
 
 const Home = () => {
   return (
@@ -11,6 +12,8 @@ const Home = () => {
       <Hero />
       <LatestCollection />
       <BestSeller />
+      {/* Open Box Deals — returned products listed for resale near user */}
+      <NearbyDeals />
       <OurPolicy />
       <NewsletterBox />
     </div>

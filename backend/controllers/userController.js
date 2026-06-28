@@ -6,8 +6,9 @@ import jwt from "jsonwebtoken"
 
 
 
-const createToken = (id)=>{
-    return jwt.sign({id}, process.env.JWT_SECRET)
+const createToken = (id) => {
+    // Token expires in 7 days — never leave tokens without expiry!
+    return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '7d' })
 }
 
 
