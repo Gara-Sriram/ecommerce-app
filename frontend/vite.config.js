@@ -10,6 +10,12 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
 
+      // ✅ Enable Service Worker in development mode too
+      devOptions: {
+        enabled: true,
+        type: 'module',
+      },
+
       // Web App Manifest — makes it installable on mobile/desktop
       manifest: {
         name: 'ShopEase — Fashion Store',
@@ -32,14 +38,14 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
 
         runtimeCaching: [
-          // Cache product API responses for 1 day (network-first, fallback to cache)
+          // Cache product API responses (network-first, 5s timeout → serve cache)
           {
             urlPattern: /\/api\/product\/list/,
             handler: 'NetworkFirst',
             options: {
               cacheName: 'products-api-cache',
-              expiration: { maxEntries: 5, maxAgeSeconds: 60 * 60 * 24 }, // 1 day
-              networkTimeoutSeconds: 5, // if network takes > 5s → use cache
+              expiration: { maxEntries: 5, maxAgeSeconds: 60 * 60 * 24 },
+              networkTimeoutSeconds: 5,
               cacheableResponse: { statuses: [0, 200] }
             }
           },
@@ -49,7 +55,7 @@ export default defineConfig({
             handler: 'CacheFirst',
             options: {
               cacheName: 'cloudinary-images',
-              expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 7 }, // 7 days
+              expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 7 },
               cacheableResponse: { statuses: [0, 200] }
             }
           },

@@ -6,6 +6,37 @@ import { saveProductsOffline, getCachedProducts } from "../utils/db";
 
 export const ShopContext = createContext();
 
+// ─── Cache API helpers (browser Cache Storage — works even without SW) ────────
+const CACHE_NAME = 'shopease-products-v1';
+
+const saveToCache = async (products) => {
+    try {
+        if (!('caches' in window)) return;
+        const cache = await caches.open(CACHE_NAME);
+        const response = new Response(JSON.stringify({ success: true, products }), {
+            headers: { 'Content-Type': 'application/json' }
+        });
+        await cache.put('/api/product/list', response);
+    } catch (e) {
+        console.warn('[Cache API] Could not save:', e);
+    }
+};
+
+const readFromCache = async () => {
+    try {
+        if (!('caches' in window)) return null;
+        const cache = await caches.open(CACHE_NAME);
+        const response = await cache.match('/api/product/list');
+        if (!response) return null;
+        const data = await response.json();
+        return data?.products || null;
+    } catch (e) {
+        console.warn('[Cache API] Could not read:', e);
+        return null;
+    }
+};
+// ─────────────────────────────────────────────────────────────────────────────
+
 const ShopContextProvider = (props) => {
 
     const currency = '$';
@@ -20,20 +51,12 @@ const ShopContextProvider = (props) => {
     const navigate = useNavigate();
 
     const addToCart = async (itemId, size) => {
-        if (!size) {
-            toast.error('Select Product Size');
-            return;
-        }
+        if (!size) { toast.error('Select Product Size'); return; }
         let cartData = structuredClone(cartItems);
         if (cartData[itemId]) {
-            if (cartData[itemId][size]) {
-                cartData[itemId][size] += 1;
-            } else {
-                cartData[itemId][size] = 1;
-            }
+            cartData[itemId][size] = (cartData[itemId][size] || 0) + 1;
         } else {
-            cartData[itemId] = {};
-            cartData[itemId][size] = 1;
+            cartData[itemId] = { [size]: 1 };
         }
         setCartItems(cartData);
 
@@ -56,12 +79,8 @@ const ShopContextProvider = (props) => {
         for (const items in cartItems) {
             for (const item in cartItems[items]) {
                 try {
-                    if (cartItems[items][item] > 0) {
-                        totalCount += cartItems[items][item];
-                    }
-                } catch (error) {
-                    console.log(error);
-                }
+                    if (cartItems[items][item] > 0) totalCount += cartItems[items][item];
+                } catch (e) { console.log(e); }
             }
         }
         return totalCount;
@@ -74,10 +93,7 @@ const ShopContextProvider = (props) => {
         if (token) {
             try {
                 await axios.post(backendUrl + '/api/cart/update', { itemId, size, quantity }, { headers: { token } });
-            } catch (error) {
-                console.log(error);
-                toast.error(error.message);
-            }
+            } catch (error) { console.log(error); toast.error(error.message); }
         }
     };
 
@@ -87,62 +103,92 @@ const ShopContextProvider = (props) => {
             let itemInfo = products.find((product) => product._id === items);
             for (const item in cartItems[items]) {
                 try {
-                    if (cartItems[items][item] > 0) {
-                        totalAmount += itemInfo.price * cartItems[items][item];
-                    }
-                } catch (error) { }
+                    if (cartItems[items][item] > 0) totalAmount += itemInfo.price * cartItems[items][item];
+                } catch (e) { }
             }
         }
         return totalAmount;
     };
 
     /**
-     * Fetch products — tries server first, falls back to IndexedDB if server is down.
-     * On every successful fetch, saves to IndexedDB for future offline use.
+     * Fetch products with THREE-LAYER fallback:
+     *
+     * Layer 1: Try live server (axios with 6s timeout)
+     * Layer 2: Browser Cache API (saved on last successful fetch)
+     * Layer 3: IndexedDB (longer-lived offline storage)
+     *
+     * This means even in npm run dev mode, layers 2 & 3 always work.
      */
     const getProductsData = async () => {
         try {
-            const response = await axios.get(backendUrl + '/api/product/list', { timeout: 8000 });
+            // ── LAYER 1: Live server ──────────────────────────────────────────
+            const response = await axios.get(backendUrl + '/api/product/list', {
+                timeout: 6000 // 6 second timeout
+            });
+
             if (response.data.success) {
-                setProducts(response.data.products);
+                const freshProducts = response.data.products;
+                setProducts(freshProducts);
                 setIsOffline(false);
-                // Save fresh products to browser storage for future offline use
-                await saveProductsOffline(response.data.products);
+
+                // ✅ Save to BOTH caches on every successful fetch
+                await Promise.all([
+                    saveToCache(freshProducts),         // Cache API (fast)
+                    saveProductsOffline(freshProducts)  // IndexedDB (persistent)
+                ]);
             } else {
                 toast.error(response.data.message);
             }
+
         } catch (error) {
-            // Server unreachable — try loading from IndexedDB
-            console.warn('[ShopContext] Server unreachable, loading from offline cache...');
-            const cachedProducts = await getCachedProducts();
-            if (cachedProducts.length > 0) {
-                setProducts(cachedProducts);
+            // ── LAYER 2: Browser Cache API ────────────────────────────────────
+            console.warn('[ShopContext] Server unreachable. Trying Cache API...');
+            const cacheProducts = await readFromCache();
+
+            if (cacheProducts && cacheProducts.length > 0) {
+                setProducts(cacheProducts);
                 setIsOffline(true);
-                toast.warn(`Server unavailable — showing ${cachedProducts.length} cached products.`, {
-                    autoClose: 6000,
-                    toastId: 'offline-toast'
-                });
-            } else {
-                toast.error('Server unavailable and no cached products found. Please try again later.');
+                toast.warn(
+                    `⚠️ Server unavailable — showing ${cacheProducts.length} cached products. Cart syncs when back online.`,
+                    { autoClose: 7000, toastId: 'offline-toast' }
+                );
+                return;
             }
+
+            // ── LAYER 3: IndexedDB ────────────────────────────────────────────
+            console.warn('[ShopContext] Cache API empty. Trying IndexedDB...');
+            const idbProducts = await getCachedProducts();
+
+            if (idbProducts && idbProducts.length > 0) {
+                setProducts(idbProducts);
+                setIsOffline(true);
+                toast.warn(
+                    `⚠️ Server unavailable — showing ${idbProducts.length} saved products.`,
+                    { autoClose: 7000, toastId: 'offline-toast' }
+                );
+                return;
+            }
+
+            // ── All layers failed ─────────────────────────────────────────────
+            setIsOffline(true);
+            toast.error(
+                'Server is currently unavailable. Please visit the site once when the server is back online to enable offline browsing.',
+                { autoClose: 10000 }
+            );
         }
     };
 
     const getUserCart = async (token) => {
         try {
             const response = await axios.post(backendUrl + '/api/cart/get', {}, { headers: { token } });
-            if (response.data.success) {
-                setCartItems(response.data.cartData);
-            }
+            if (response.data.success) setCartItems(response.data.cartData);
         } catch (error) {
             console.log(error);
-            toast.error(error.message);
+            // Don't show error if offline — cart state is maintained in component
         }
     };
 
-    useEffect(() => {
-        getProductsData();
-    }, []);
+    useEffect(() => { getProductsData(); }, []);
 
     useEffect(() => {
         if (!token && localStorage.getItem('token')) {
@@ -151,11 +197,11 @@ const ShopContextProvider = (props) => {
         }
     }, []);
 
-    // When network comes back online, refresh data automatically
+    // Auto-refresh when network comes back online
     useEffect(() => {
         const handleOnline = () => {
             if (isOffline) {
-                toast.success('Back online! Refreshing products...');
+                toast.success('🌐 Back online! Refreshing products...');
                 getProductsData();
             }
         };
