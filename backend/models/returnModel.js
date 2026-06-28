@@ -42,6 +42,8 @@ const returnSchema = new mongoose.Schema({
         }
     },
     locationLabel: { type: String }, // e.g., "Mumbai, Maharashtra"
+    // Whether user shared their real GPS location (false = saved as 0,0 — show to everyone)
+    hasLocation: { type: Boolean, default: false },
 
     // Status lifecycle
     status: {

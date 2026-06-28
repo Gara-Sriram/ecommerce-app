@@ -53,9 +53,14 @@ const initiateReturn = async (req, res) => {
             discountPercent,
             resalePrice,
             cashbackAmount,
+            // Only save real coordinates if user shared location
+            hasLocation: !!(latitude && longitude && latitude !== 0 && longitude !== 0),
             location: {
                 type: 'Point',
-                coordinates: [parseFloat(longitude) || 0, parseFloat(latitude) || 0]
+                coordinates: [
+                    parseFloat(longitude) || 0,
+                    parseFloat(latitude) || 0
+                ]
             },
             locationLabel: locationLabel || 'Location not shared',
             status: 'Listed for Resale',
@@ -86,21 +91,31 @@ const initiateReturn = async (req, res) => {
 // ─────────────────────────────────────────────────
 const getNearbyReturns = async (req, res) => {
     try {
-        const { lat, lng, radius = 50000 } = req.query; // radius in meters, default 50km
+        const { lat, lng, radius = 75000 } = req.query; // radius in meters, default 75km
+
+        const baseFilter = {
+            status: 'Listed for Resale',
+            listingExpiresAt: { $gt: new Date() }
+        };
 
         if (!lat || !lng) {
-            // If no location provided, return all active listings (fallback)
-            const listings = await returnModel.find({
-                status: 'Listed for Resale',
-                listingExpiresAt: { $gt: new Date() }
-            }).limit(20);
+            // No location provided — return ALL active listings
+            const listings = await returnModel.find(baseFilter)
+                .sort({ createdAt: -1 })
+                .limit(20);
             return res.json({ success: true, listings, locationUsed: false });
         }
 
-        // MongoDB $near query — finds documents sorted by distance
-        const listings = await returnModel.find({
-            status: 'Listed for Resale',
-            listingExpiresAt: { $gt: new Date() },
+        // ── TWO-QUERY APPROACH ────────────────────────────────────────────
+        // Problem: MongoDB $near cannot be combined with $or, so we run two
+        // queries and merge:
+        //   Query A: Items WITH real GPS → use $near to filter by distance
+        //   Query B: Items WITHOUT GPS (hasLocation: false) → show everywhere
+
+        // Query A — located items within range
+        const locatedListings = await returnModel.find({
+            ...baseFilter,
+            hasLocation: true,
             location: {
                 $near: {
                     $geometry: {
@@ -110,7 +125,22 @@ const getNearbyReturns = async (req, res) => {
                     $maxDistance: parseInt(radius)
                 }
             }
-        }).limit(20);
+        }).limit(15);
+
+        // Query B — items with no location, show to all users
+        const unlocatedListings = await returnModel.find({
+            ...baseFilter,
+            hasLocation: false
+        }).sort({ createdAt: -1 }).limit(10);
+
+        // Merge, remove duplicates by _id
+        const seen = new Set();
+        const listings = [...locatedListings, ...unlocatedListings].filter(item => {
+            const id = item._id.toString();
+            if (seen.has(id)) return false;
+            seen.add(id);
+            return true;
+        });
 
         res.json({ success: true, listings, locationUsed: true, count: listings.length });
 
