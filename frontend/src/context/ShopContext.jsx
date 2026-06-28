@@ -117,6 +117,24 @@ const ShopContextProvider = (props) => {
      * Works in dev mode, prod mode, with or without Service Worker.
      */
     const getProductsData = async () => {
+        // ── Guard: if backendUrl is not configured, skip to cache immediately ──
+        if (!backendUrl) {
+            console.warn('[ShopContext] VITE_BACKEND_URL is not set — loading from local cache.');
+            const cached = loadProductsFromLocal();
+            if (cached && cached.products.length > 0) {
+                setProducts(cached.products);
+                setIsOffline(true);
+                toast.warn(
+                    `⚠️ Backend URL not configured — showing ${cached.products.length} cached products.`,
+                    { autoClose: 8000, toastId: 'offline-toast' }
+                );
+            } else {
+                setIsOffline(true);
+                toast.error('Backend URL not set and no cached products found.', { autoClose: 10000 });
+            }
+            return;
+        }
+
         try {
             // ── Try live server ─────────────────────────────────────────────
             const response = await axios.get(backendUrl + '/api/product/list', { timeout: 6000 });
