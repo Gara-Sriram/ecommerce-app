@@ -2,36 +2,36 @@ import { createContext, useEffect, useState } from "react";
 import axios from "axios";
 import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
-import { saveProductsOffline, getCachedProducts } from "../utils/db";
 
 export const ShopContext = createContext();
 
-// ─── Cache API helpers (browser Cache Storage — works even without SW) ────────
-const CACHE_NAME = 'shopease-products-v1';
+// ─── localStorage Offline Cache ───────────────────────────────────────────────
+// Simplest and most reliable approach — works in dev, prod, with or without SW.
+// No Service Worker, no IndexedDB complexity, just plain localStorage.
+const CACHE_KEY = 'shopease_products';
+const CACHE_TIME_KEY = 'shopease_products_time';
 
-const saveToCache = async (products) => {
+const saveProductsToLocal = (products) => {
     try {
-        if (!('caches' in window)) return;
-        const cache = await caches.open(CACHE_NAME);
-        const response = new Response(JSON.stringify({ success: true, products }), {
-            headers: { 'Content-Type': 'application/json' }
-        });
-        await cache.put('/api/product/list', response);
+        localStorage.setItem(CACHE_KEY, JSON.stringify(products));
+        localStorage.setItem(CACHE_TIME_KEY, new Date().toISOString());
+        console.log(`[Offline Cache] ✅ Saved ${products.length} products to localStorage`);
     } catch (e) {
-        console.warn('[Cache API] Could not save:', e);
+        console.warn('[Offline Cache] localStorage save failed:', e);
     }
 };
 
-const readFromCache = async () => {
+const loadProductsFromLocal = () => {
     try {
-        if (!('caches' in window)) return null;
-        const cache = await caches.open(CACHE_NAME);
-        const response = await cache.match('/api/product/list');
-        if (!response) return null;
-        const data = await response.json();
-        return data?.products || null;
+        const cached = localStorage.getItem(CACHE_KEY);
+        const cachedTime = localStorage.getItem(CACHE_TIME_KEY);
+        if (!cached) return null;
+        return {
+            products: JSON.parse(cached),
+            savedAt: cachedTime ? new Date(cachedTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Unknown'
+        };
     } catch (e) {
-        console.warn('[Cache API] Could not read:', e);
+        console.warn('[Offline Cache] localStorage read failed:', e);
         return null;
     }
 };
@@ -59,13 +59,12 @@ const ShopContextProvider = (props) => {
             cartData[itemId] = { [size]: 1 };
         }
         setCartItems(cartData);
-
         if (token) {
             try {
                 await axios.post(backendUrl + '/api/cart/add', { itemId, size }, { headers: { token } });
             } catch (error) {
                 if (!navigator.onLine) {
-                    toast.info('Offline: Item added locally. Will sync when back online.');
+                    toast.info('📦 Item saved locally — will sync when back online.');
                 } else {
                     console.log(error);
                     toast.error(error.message);
@@ -111,70 +110,47 @@ const ShopContextProvider = (props) => {
     };
 
     /**
-     * Fetch products with THREE-LAYER fallback:
+     * Fetch products with fallback:
+     * 1️⃣  Try live backend (6s timeout)
+     * 2️⃣  If fails → read from localStorage (saved on last successful fetch)
      *
-     * Layer 1: Try live server (axios with 6s timeout)
-     * Layer 2: Browser Cache API (saved on last successful fetch)
-     * Layer 3: IndexedDB (longer-lived offline storage)
-     *
-     * This means even in npm run dev mode, layers 2 & 3 always work.
+     * Works in dev mode, prod mode, with or without Service Worker.
      */
     const getProductsData = async () => {
         try {
-            // ── LAYER 1: Live server ──────────────────────────────────────────
-            const response = await axios.get(backendUrl + '/api/product/list', {
-                timeout: 6000 // 6 second timeout
-            });
+            // ── Try live server ─────────────────────────────────────────────
+            const response = await axios.get(backendUrl + '/api/product/list', { timeout: 6000 });
 
             if (response.data.success) {
                 const freshProducts = response.data.products;
                 setProducts(freshProducts);
                 setIsOffline(false);
-
-                // ✅ Save to BOTH caches on every successful fetch
-                await Promise.all([
-                    saveToCache(freshProducts),         // Cache API (fast)
-                    saveProductsOffline(freshProducts)  // IndexedDB (persistent)
-                ]);
+                // ✅ Save to localStorage every time server responds successfully
+                saveProductsToLocal(freshProducts);
             } else {
                 toast.error(response.data.message);
             }
 
         } catch (error) {
-            // ── LAYER 2: Browser Cache API ────────────────────────────────────
-            console.warn('[ShopContext] Server unreachable. Trying Cache API...');
-            const cacheProducts = await readFromCache();
+            // ── Server failed → load from localStorage ──────────────────────
+            console.warn('[ShopContext] Server unreachable. Loading from local cache...');
+            const cached = loadProductsFromLocal();
 
-            if (cacheProducts && cacheProducts.length > 0) {
-                setProducts(cacheProducts);
+            if (cached && cached.products.length > 0) {
+                setProducts(cached.products);
                 setIsOffline(true);
                 toast.warn(
-                    `⚠️ Server unavailable — showing ${cacheProducts.length} cached products. Cart syncs when back online.`,
-                    { autoClose: 7000, toastId: 'offline-toast' }
+                    `⚠️ Server unavailable — showing ${cached.products.length} cached products (saved at ${cached.savedAt}). Cart will sync when back online.`,
+                    { autoClose: 8000, toastId: 'offline-toast' }
                 );
-                return;
-            }
-
-            // ── LAYER 3: IndexedDB ────────────────────────────────────────────
-            console.warn('[ShopContext] Cache API empty. Trying IndexedDB...');
-            const idbProducts = await getCachedProducts();
-
-            if (idbProducts && idbProducts.length > 0) {
-                setProducts(idbProducts);
+            } else {
+                // No cache at all — first time user, server is down
                 setIsOffline(true);
-                toast.warn(
-                    `⚠️ Server unavailable — showing ${idbProducts.length} saved products.`,
-                    { autoClose: 7000, toastId: 'offline-toast' }
+                toast.error(
+                    '❌ Server is down and no cached products found. Please open the app once with the server running to enable offline browsing.',
+                    { autoClose: 12000 }
                 );
-                return;
             }
-
-            // ── All layers failed ─────────────────────────────────────────────
-            setIsOffline(true);
-            toast.error(
-                'Server is currently unavailable. Please visit the site once when the server is back online to enable offline browsing.',
-                { autoClose: 10000 }
-            );
         }
     };
 
@@ -183,8 +159,8 @@ const ShopContextProvider = (props) => {
             const response = await axios.post(backendUrl + '/api/cart/get', {}, { headers: { token } });
             if (response.data.success) setCartItems(response.data.cartData);
         } catch (error) {
-            console.log(error);
-            // Don't show error if offline — cart state is maintained in component
+            // Silent fail when offline — cart state preserved in React state
+            console.log('[Cart] Offline — skipping cart sync');
         }
     };
 
@@ -197,7 +173,7 @@ const ShopContextProvider = (props) => {
         }
     }, []);
 
-    // Auto-refresh when network comes back online
+    // Auto-refresh products when internet comes back
     useEffect(() => {
         const handleOnline = () => {
             if (isOffline) {
