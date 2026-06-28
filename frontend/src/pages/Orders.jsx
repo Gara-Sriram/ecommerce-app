@@ -53,7 +53,7 @@ const Orders = () => {
   };
 
   const canReturn = (status) =>
-    ['Delivered'].includes(status);
+    ['Delivered', 'Order Placed', 'Shipped', 'Out for Delivery'].includes(status);
 
   const handleOpenReturn = (item) => {
     setSelectedItem(item);

@@ -6,22 +6,19 @@ import { toast } from 'react-toastify';
 /**
  * NearbyDeals — Shows returned products listed for resale near the user's location.
  * Uses browser Geolocation API to find nearby listings via MongoDB $near query.
+ * Shows an empty state card when no deals exist yet so the feature is always visible.
  */
 const NearbyDeals = () => {
     const { backendUrl, currency, token, navigate } = useContext(ShopContext);
     const [deals, setDeals] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [locationStatus, setLocationStatus] = useState('requesting'); // 'requesting' | 'granted' | 'denied' | 'none'
-    const [purchasing, setPurchasing] = useState(null); // returnId being purchased
+    const [locationStatus, setLocationStatus] = useState('requesting');
+    const [purchasing, setPurchasing] = useState(null);
 
-    useEffect(() => {
-        fetchNearbyDeals();
-    }, []);
+    useEffect(() => { fetchNearbyDeals(); }, []);
 
     const fetchNearbyDeals = () => {
         setLoading(true);
-
-        // Try to get user's geolocation for nearby results
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(
                 async (position) => {
@@ -31,16 +28,11 @@ const NearbyDeals = () => {
                         const res = await axios.get(
                             `${backendUrl}/api/returns/nearby?lat=${latitude}&lng=${longitude}&radius=75000`
                         );
-                        if (res.data.success) {
-                            setDeals(res.data.listings);
-                        }
-                    } catch (e) {
-                        console.warn('Failed to fetch nearby deals', e);
-                    }
+                        if (res.data.success) setDeals(res.data.listings);
+                    } catch (e) { console.warn('Failed to fetch nearby deals', e); }
                     setLoading(false);
                 },
                 async () => {
-                    // Location denied — show all listings as fallback
                     setLocationStatus('denied');
                     try {
                         const res = await axios.get(`${backendUrl}/api/returns/nearby`);
@@ -51,34 +43,19 @@ const NearbyDeals = () => {
                 { timeout: 5000 }
             );
         } else {
-            // Geolocation not supported
             setLocationStatus('none');
             setLoading(false);
         }
     };
 
     const handleBuy = async (deal) => {
-        if (!token) {
-            toast.info('Please login to purchase this item.');
-            navigate('/login');
-            return;
-        }
+        if (!token) { toast.info('Please login to purchase this item.'); navigate('/login'); return; }
         setPurchasing(deal._id);
         try {
-            const res = await axios.post(
-                `${backendUrl}/api/returns/purchase`,
-                { returnId: deal._id },
-                { headers: { token } }
-            );
-            if (res.data.success) {
-                toast.success(res.data.message);
-                setDeals(prev => prev.filter(d => d._id !== deal._id));
-            } else {
-                toast.error(res.data.message);
-            }
-        } catch (e) {
-            toast.error('Purchase failed. Please try again.');
-        }
+            const res = await axios.post(`${backendUrl}/api/returns/purchase`, { returnId: deal._id }, { headers: { token } });
+            if (res.data.success) { toast.success(res.data.message); setDeals(prev => prev.filter(d => d._id !== deal._id)); }
+            else toast.error(res.data.message);
+        } catch (e) { toast.error('Purchase failed. Please try again.'); }
         setPurchasing(null);
     };
 
@@ -88,12 +65,44 @@ const NearbyDeals = () => {
         'Acceptable': { bg: '#fff7ed', text: '#ea580c', border: '#fdba74' },
     };
 
+    // ── Section Header (shared between all states) ─────────────────────────────
+    const SectionHeader = () => (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '28px', flexWrap: 'wrap', gap: '12px' }}>
+            <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                    <span style={{ fontSize: '28px' }}>🏷️</span>
+                    <h2 style={{ margin: 0, fontSize: '26px', fontWeight: '700', color: '#1a1a2e', letterSpacing: '-0.5px' }}>
+                        Open Box Deals
+                        <span style={{
+                            marginLeft: '10px', background: 'linear-gradient(135deg, #667eea, #764ba2)',
+                            color: 'white', fontSize: '12px', padding: '3px 10px',
+                            borderRadius: '20px', fontWeight: '600', verticalAlign: 'middle'
+                        }}>
+                            NEAR YOU
+                        </span>
+                    </h2>
+                </div>
+                <p style={{ margin: 0, fontSize: '14px', color: '#6b7280' }}>
+                    {locationStatus === 'granted'
+                        ? 'Returned items from buyers within 75km — verified & discounted'
+                        : 'Returned items listed by other buyers — verified & discounted'}
+                </p>
+            </div>
+            <button onClick={fetchNearbyDeals} style={{
+                background: 'transparent', border: '1.5px solid #d1d5db',
+                padding: '8px 16px', borderRadius: '8px', fontSize: '13px',
+                color: '#6b7280', cursor: 'pointer', fontWeight: '500'
+            }}>
+                🔄 Refresh
+            </button>
+        </div>
+    );
+
+    // ── Skeleton loader while fetching ─────────────────────────────────────────
     if (loading) {
         return (
             <div style={{ padding: '40px 0' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                    <div style={{ height: '28px', width: '220px', background: '#f3f4f6', borderRadius: '8px', animation: 'shimmer 1.5s infinite' }} />
-                </div>
+                <SectionHeader />
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
                     {[1, 2, 3, 4].map(i => (
                         <div key={i} style={{ borderRadius: '16px', overflow: 'hidden', border: '1px solid #e5e7eb' }}>
@@ -110,74 +119,66 @@ const NearbyDeals = () => {
         );
     }
 
-    if (deals.length === 0) return null; // Don't render section if no nearby deals
+    // ── Empty state — no deals yet, but STILL show the section ────────────────
+    if (deals.length === 0) {
+        return (
+            <div style={{ padding: '48px 0' }}>
+                <SectionHeader />
+                <div style={{
+                    border: '2px dashed #e5e7eb', borderRadius: '20px',
+                    padding: '52px 24px', textAlign: 'center',
+                    background: 'linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%)'
+                }}>
+                    <div style={{ fontSize: '56px', marginBottom: '16px' }}>📦</div>
+                    <h3 style={{ margin: '0 0 10px', fontSize: '20px', fontWeight: '700', color: '#1f2937' }}>
+                        No Open Box Deals Near You Yet
+                    </h3>
+                    <p style={{ margin: '0 0 28px', fontSize: '14px', color: '#6b7280', maxWidth: '400px', marginLeft: 'auto', marginRight: 'auto', lineHeight: '1.7' }}>
+                        When buyers return products, they get listed here at a discount for people nearby.
+                        <br />Go to <strong>My Orders → Return Item</strong> to list the first one!
+                    </p>
+                    {/* How it works steps */}
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: '40px', flexWrap: 'wrap' }}>
+                        {[
+                            { icon: '🔄', label: 'Buyer returns a product' },
+                            { icon: '📍', label: 'Listed near their location' },
+                            { icon: '🏷️', label: 'You buy at up to 30% off' },
+                            { icon: '💰', label: 'Seller earns cashback' },
+                        ].map((step, i) => (
+                            <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                                <span style={{
+                                    width: '52px', height: '52px', borderRadius: '50%', background: 'white',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    fontSize: '24px', boxShadow: '0 2px 12px rgba(0,0,0,0.08)'
+                                }}>{step.icon}</span>
+                                <span style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600', textAlign: 'center', maxWidth: '90px', lineHeight: '1.4' }}>
+                                    {step.label}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
+    // ── Deals grid when listings exist ─────────────────────────────────────────
     return (
         <div style={{ padding: '48px 0' }}>
-            {/* Section Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '28px', flexWrap: 'wrap', gap: '12px' }}>
-                <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
-                        <span style={{ fontSize: '28px' }}>🏷️</span>
-                        <h2 style={{ margin: 0, fontSize: '26px', fontWeight: '700', color: '#1a1a2e', letterSpacing: '-0.5px' }}>
-                            Open Box Deals
-                            <span style={{
-                                marginLeft: '10px', background: 'linear-gradient(135deg, #667eea, #764ba2)',
-                                color: 'white', fontSize: '12px', padding: '3px 10px',
-                                borderRadius: '20px', fontWeight: '600', verticalAlign: 'middle'
-                            }}>
-                                NEAR YOU
-                            </span>
-                        </h2>
-                    </div>
-                    <p style={{ margin: 0, fontSize: '14px', color: '#6b7280' }}>
-                        {locationStatus === 'granted'
-                            ? `Returned items from buyers within 75km — discounted & verified`
-                            : 'Returned items listed by other buyers — discounted & verified'}
-                    </p>
-                </div>
-                <button
-                    onClick={fetchNearbyDeals}
-                    style={{
-                        background: 'transparent', border: '1.5px solid #d1d5db',
-                        padding: '8px 16px', borderRadius: '8px', fontSize: '13px',
-                        color: '#6b7280', cursor: 'pointer', fontWeight: '500'
-                    }}
-                >
-                    🔄 Refresh
-                </button>
-            </div>
-
-            {/* Deals Grid */}
-            <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))',
-                gap: '20px'
-            }}>
+            <SectionHeader />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: '20px' }}>
                 {deals.map((deal) => {
                     const cond = conditionColor[deal.condition] || conditionColor['Good'];
                     const isBuying = purchasing === deal._id;
-
                     return (
                         <div key={deal._id} style={{
-                            background: 'white',
-                            borderRadius: '16px',
-                            border: '1px solid #e5e7eb',
-                            overflow: 'hidden',
-                            transition: 'transform 0.2s, box-shadow 0.2s',
-                            cursor: 'default',
-                            position: 'relative'
+                            background: 'white', borderRadius: '16px', border: '1px solid #e5e7eb',
+                            overflow: 'hidden', transition: 'transform 0.2s, box-shadow 0.2s',
+                            cursor: 'default', position: 'relative'
                         }}
-                            onMouseOver={e => {
-                                e.currentTarget.style.transform = 'translateY(-4px)';
-                                e.currentTarget.style.boxShadow = '0 12px 40px rgba(0,0,0,0.12)';
-                            }}
-                            onMouseOut={e => {
-                                e.currentTarget.style.transform = 'translateY(0)';
-                                e.currentTarget.style.boxShadow = 'none';
-                            }}
+                            onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 12px 40px rgba(0,0,0,0.12)'; }}
+                            onMouseOut={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
                         >
-                            {/* Discount badge */}
                             <div style={{
                                 position: 'absolute', top: '12px', left: '12px',
                                 background: 'linear-gradient(135deg, #ef4444, #dc2626)',
@@ -187,61 +188,31 @@ const NearbyDeals = () => {
                             }}>
                                 {deal.discountPercent}% OFF
                             </div>
-
-                            {/* Product Image */}
-                            <div style={{ position: 'relative', overflow: 'hidden', height: '210px' }}>
-                                <img
-                                    src={deal.productImage}
-                                    alt={deal.productName}
-                                    style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.3s' }}
-                                />
+                            <div style={{ overflow: 'hidden', height: '210px' }}>
+                                <img src={deal.productImage} alt={deal.productName}
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.3s' }} />
                             </div>
-
-                            {/* Details */}
                             <div style={{ padding: '16px' }}>
                                 <p style={{ margin: '0 0 6px', fontSize: '15px', fontWeight: '600', color: '#1f2937', lineHeight: '1.4' }}>
                                     {deal.productName}
                                 </p>
-
-                                {/* Condition tag */}
                                 <span style={{
                                     display: 'inline-block', marginBottom: '10px',
-                                    background: cond.bg, color: cond.text,
-                                    border: `1px solid ${cond.border}`,
+                                    background: cond.bg, color: cond.text, border: `1px solid ${cond.border}`,
                                     padding: '2px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '600'
-                                }}>
-                                    {deal.condition}
-                                </span>
-
-                                {/* Price */}
+                                }}>{deal.condition}</span>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                                    <span style={{ fontSize: '20px', fontWeight: '700', color: '#1f2937' }}>
-                                        {currency}{deal.resalePrice}
-                                    </span>
-                                    <span style={{ fontSize: '13px', color: '#9ca3af', textDecoration: 'line-through' }}>
-                                        {currency}{deal.originalPrice}
-                                    </span>
+                                    <span style={{ fontSize: '20px', fontWeight: '700', color: '#1f2937' }}>{currency}{deal.resalePrice}</span>
+                                    <span style={{ fontSize: '13px', color: '#9ca3af', textDecoration: 'line-through' }}>{currency}{deal.originalPrice}</span>
                                 </div>
-
-                                {/* Location */}
-                                <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#9ca3af' }}>
-                                    📍 {deal.locationLabel}
-                                </p>
-
-                                {/* Buy button */}
-                                <button
-                                    onClick={() => handleBuy(deal)}
-                                    disabled={isBuying}
-                                    style={{
-                                        width: '100%', padding: '11px',
-                                        background: isBuying
-                                            ? '#9ca3af'
-                                            : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                                        color: 'white', border: 'none', borderRadius: '10px',
-                                        fontSize: '14px', fontWeight: '600',
-                                        cursor: isBuying ? 'not-allowed' : 'pointer',
-                                        transition: 'opacity 0.2s'
-                                    }}
+                                <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#9ca3af' }}>📍 {deal.locationLabel}</p>
+                                <button onClick={() => handleBuy(deal)} disabled={isBuying} style={{
+                                    width: '100%', padding: '11px',
+                                    background: isBuying ? '#9ca3af' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                    color: 'white', border: 'none', borderRadius: '10px',
+                                    fontSize: '14px', fontWeight: '600',
+                                    cursor: isBuying ? 'not-allowed' : 'pointer', transition: 'opacity 0.2s'
+                                }}
                                     onMouseOver={e => { if (!isBuying) e.target.style.opacity = '0.88'; }}
                                     onMouseOut={e => { e.target.style.opacity = '1'; }}
                                 >
