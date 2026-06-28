@@ -127,10 +127,11 @@ const getNearbyReturns = async (req, res) => {
             }
         }).limit(15);
 
-        // Query B — items with no location, show to all users
+        // Query B — items with no location (hasLocation=false OR field missing on old docs)
+        // $ne: true matches BOTH { hasLocation: false } AND { hasLocation: <missing> }
         const unlocatedListings = await returnModel.find({
             ...baseFilter,
-            hasLocation: false
+            hasLocation: { $ne: true }
         }).sort({ createdAt: -1 }).limit(10);
 
         // Merge, remove duplicates by _id
