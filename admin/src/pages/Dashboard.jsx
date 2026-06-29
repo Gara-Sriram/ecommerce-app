@@ -203,9 +203,10 @@ const Dashboard = ({ token }) => {
                             ) : (
                                 <div className="flex items-end justify-between h-48 pt-6 border-b border-l px-2">
                                     {stats.revenueTimeline.map((item) => {
+                                        if (!item._id) return null; // skip malformed/null entries
                                         const pct = (item.revenue / maxRevenue) * 100;
                                         return (
-                                            <div key={item._id} className="flex flex-col items-center flex-1 group relative">
+                                            <div key={item._id} className="flex flex-col justify-end items-center flex-1 h-full group relative">
                                                 {/* Tooltip */}
                                                 <span className="absolute bottom-full mb-2 bg-black text-white text-[10px] px-2 py-1 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
                                                     {currency}{item.revenue.toLocaleString()} ({item.ordersCount} orders)
@@ -234,9 +235,10 @@ const Dashboard = ({ token }) => {
                             ) : (
                                 <div className="flex items-end justify-between h-48 pt-6 border-b border-l px-2">
                                     {stats.userGrowthTimeline.map((item) => {
+                                        if (!item._id) return null; // skip malformed/null entries
                                         const pct = (item.newUsers / maxNewUsers) * 100;
                                         return (
-                                            <div key={item._id} className="flex flex-col items-center flex-1 group relative">
+                                            <div key={item._id} className="flex flex-col justify-end items-center flex-1 h-full group relative">
                                                 {/* Tooltip */}
                                                 <span className="absolute bottom-full mb-2 bg-black text-white text-[10px] px-2 py-1 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
                                                     {item.newUsers} new signups
