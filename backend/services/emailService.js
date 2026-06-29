@@ -26,8 +26,25 @@ import nodemailer from 'nodemailer';
 // ── Determine which transport to use ─────────────────────────────────────
 let sendEmail; // Unified send function
 
-if (process.env.RESEND_API_KEY) {
-    // ── Option 1: Resend (HTTP API — works on Render, Vercel, Railway) ──
+if (process.env.MAILING_SCRIPT_URL) {
+    // ── Option 1: Google Apps Script Webhook (Free, bypasses SMTP blocks, sends to anyone) ──
+    console.log('📧 Email service: Google Apps Script Webhook ✅ (Sends to any email)');
+
+    sendEmail = async ({ to, subject, html }) => {
+        const response = await fetch(process.env.MAILING_SCRIPT_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ to, subject, html })
+        });
+        const result = await response.json();
+        if (!result.success) {
+            throw new Error(`Google Apps Script Email Error: ${result.error}`);
+        }
+        return result;
+    };
+
+} else if (process.env.RESEND_API_KEY) {
+    // ── Option 2: Resend (HTTP API) ──
     const resend = new Resend(process.env.RESEND_API_KEY);
     const FROM = process.env.RESEND_FROM_EMAIL || 'ShopEase <onboarding@resend.dev>';
 
