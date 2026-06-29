@@ -93,6 +93,10 @@ const registerUser = async (req, res) => {
         });
 
     } catch (error) {
+        // Handle MongoDB duplicate key (E11000) — happens if form submitted twice rapidly
+        if (error.code === 11000) {
+            return res.json({ success: false, message: 'An account with this email already exists. Try logging in instead.' });
+        }
         console.error('[Register]', error);
         res.json({ success: false, message: error.message });
     }
