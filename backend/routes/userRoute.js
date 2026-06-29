@@ -11,7 +11,10 @@ import {
     revokeSession,
     forgotPassword,
     resetPassword,
-    adminLogin
+    adminLogin,
+    addToWishlist,
+    removeFromWishlist,
+    getWishlist
 } from '../controllers/userController.js';
 import { authLimiter, apiLimiter } from '../middleware/rateLimiter.js';
 import authMiddleware from '../middleware/auth.js';
@@ -35,6 +38,11 @@ userRouter.post('/logout-all', authMiddleware, logoutAllDevices); // Logout all 
 // ── Session management ────────────────────────────────────────────────────
 userRouter.get('/sessions', authMiddleware, getActiveSessions);          // List active sessions
 userRouter.post('/sessions/revoke', authMiddleware, revokeSession);      // Revoke specific session
+
+// ── Wishlist management ───────────────────────────────────────────────────
+userRouter.post('/wishlist/add', authMiddleware, addToWishlist);
+userRouter.post('/wishlist/remove', authMiddleware, removeFromWishlist);
+userRouter.get('/wishlist', authMiddleware, getWishlist);
 
 // ── Password reset ────────────────────────────────────────────────────────
 userRouter.post('/forgot-password', authLimiter, forgotPassword);

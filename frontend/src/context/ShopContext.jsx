@@ -46,6 +46,7 @@ const ShopContextProvider = (props) => {
     const [showSearch, setShowSearch] = useState(false);
     const [cartItems, setCartItems] = useState({});
     const [products, setProducts] = useState([]);
+    const [wishlist, setWishlist] = useState([]);
     const [token, setToken] = useState('');
     const [isOffline, setIsOffline] = useState(false);
     const navigate = useNavigate();
@@ -182,14 +183,62 @@ const ShopContextProvider = (props) => {
         }
     };
 
+    const getUserWishlist = async (tokenVal) => {
+        if (!tokenVal) return;
+        try {
+            const response = await axios.get(backendUrl + '/api/user/wishlist', { headers: { token: tokenVal } });
+            if (response.data.success) {
+                // Store array of product IDs or populated product objects
+                setWishlist(response.data.wishlist.map(item => item._id || item));
+            }
+        } catch (error) {
+            console.log('[Wishlist] Failed to fetch wishlist:', error.message);
+        }
+    };
+
+    const toggleWishlist = async (productId) => {
+        if (!token) {
+            toast.error('Please log in to add products to your wishlist.');
+            navigate('/login');
+            return;
+        }
+
+        const isFav = wishlist.includes(productId);
+        const url = backendUrl + (isFav ? '/api/user/wishlist/remove' : '/api/user/wishlist/add');
+
+        try {
+            const response = await axios.post(url, { productId }, { headers: { token } });
+            if (response.data.success) {
+                if (isFav) {
+                    setWishlist(prev => prev.filter(id => id !== productId));
+                    toast.success('Removed from wishlist.');
+                } else {
+                    setWishlist(prev => [...prev, productId]);
+                    toast.success('Added to wishlist!');
+                }
+            } else {
+                toast.error(response.data.message);
+            }
+        } catch (error) {
+            console.log('[Wishlist] Toggle failed:', error.message);
+            toast.error('Failed to update wishlist.');
+        }
+    };
+
     useEffect(() => { getProductsData(); }, []);
 
     useEffect(() => {
-        if (!token && localStorage.getItem('token')) {
-            setToken(localStorage.getItem('token'));
-            getUserCart(localStorage.getItem('token'));
+        const storedToken = localStorage.getItem('token');
+        if (storedToken) {
+            setToken(storedToken);
+            getUserCart(storedToken);
+            getUserWishlist(storedToken);
+        } else {
+            setToken('');
+            setCartItems({});
+            setWishlist([]);
         }
-    }, []);
+    }, [token]);
 
     // Auto-refresh products when internet comes back
     useEffect(() => {
@@ -208,7 +257,8 @@ const ShopContextProvider = (props) => {
         search, setSearch, showSearch, setShowSearch,
         cartItems, setCartItems, addToCart, getCartCount,
         updateQuantity, getCartAmount, navigate,
-        backendUrl, setToken, token, isOffline
+        backendUrl, setToken, token, isOffline,
+        wishlist, toggleWishlist, getUserWishlist
     };
 
     return (

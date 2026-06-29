@@ -486,6 +486,69 @@ const adminLogin = async (req, res) => {
     }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// WISHLIST CONTROLLERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Add item to wishlist — POST /api/user/wishlist/add
+const addToWishlist = async (req, res) => {
+    try {
+        const { userId, productId } = req.body;
+
+        if (!productId) {
+            return res.json({ success: false, message: 'Product ID is required.' });
+        }
+
+        const user = await userModel.findById(userId);
+        if (!user) return res.json({ success: false, message: 'User not found.' });
+
+        // Add to wishlist if not already present
+        if (!user.wishlist.includes(productId)) {
+            user.wishlist.push(productId);
+            await user.save();
+        }
+
+        res.json({ success: true, message: 'Item added to wishlist.', wishlist: user.wishlist });
+    } catch (error) {
+        res.json({ success: false, message: error.message });
+    }
+};
+
+// Remove item from wishlist — POST /api/user/wishlist/remove
+const removeFromWishlist = async (req, res) => {
+    try {
+        const { userId, productId } = req.body;
+
+        if (!productId) {
+            return res.json({ success: false, message: 'Product ID is required.' });
+        }
+
+        const user = await userModel.findById(userId);
+        if (!user) return res.json({ success: false, message: 'User not found.' });
+
+        user.wishlist = user.wishlist.filter(id => id.toString() !== productId);
+        await user.save();
+
+        res.json({ success: true, message: 'Item removed from wishlist.', wishlist: user.wishlist });
+    } catch (error) {
+        res.json({ success: false, message: error.message });
+    }
+};
+
+// Get user wishlist — GET /api/user/wishlist
+const getWishlist = async (req, res) => {
+    try {
+        const { userId } = req.body;
+
+        const user = await userModel.findById(userId).populate('wishlist');
+        if (!user) return res.json({ success: false, message: 'User not found.' });
+
+        res.json({ success: true, wishlist: user.wishlist });
+    } catch (error) {
+        res.json({ success: false, message: error.message });
+    }
+};
+
 export {
     registerUser,
     verifyEmail,
@@ -499,4 +562,7 @@ export {
     forgotPassword,
     resetPassword,
     adminLogin,
+    addToWishlist,
+    removeFromWishlist,
+    getWishlist,
 };

@@ -15,6 +15,7 @@ const userSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     password: { type: String, required: true },  // Argon2 hash
     cartData: { type: Object, default: {} },
+    wishlist: [{ type: mongoose.Schema.Types.ObjectId, ref: 'product' }],
 
     // ── Email Verification ──────────────────────────────────────
     isEmailVerified: { type: Boolean, default: false },
