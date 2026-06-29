@@ -210,8 +210,9 @@ export const generateOTP = () => {
 
 /**
  * Hash an OTP before storing in DB (same principle as password hashing)
+ * crypto.createHash is synchronous — no need for async
  */
-export const hashOTP = async (otp) => {
+export const hashOTP = (otp) => {
     return crypto.createHash('sha256').update(otp).digest('hex');
 };
 
