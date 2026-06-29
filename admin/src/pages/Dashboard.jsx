@@ -103,6 +103,16 @@ const Dashboard = ({ token }) => {
         ? Math.max(...stats.userGrowthTimeline.map(item => item.newUsers))
         : 1;
 
+    const formatDate = (dateStr) => {
+        if (!dateStr) return '';
+        const parts = dateStr.split('-');
+        if (parts.length < 3) return dateStr;
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const day = parseInt(parts[2], 10);
+        const monthIndex = parseInt(parts[1], 10) - 1;
+        return `${day} ${months[monthIndex]}`;
+    };
+
     return (
         <div className="p-4 sm:p-6 max-w-7xl mx-auto">
             {/* Header Tabs */}
@@ -201,7 +211,7 @@ const Dashboard = ({ token }) => {
                             {stats.revenueTimeline.length === 0 ? (
                                 <div className="text-center py-20 text-gray-400 text-xs">No sales recorded in the last 30 days.</div>
                             ) : (
-                                <div className="flex items-end justify-between h-48 pt-6 border-b border-l px-2">
+                                <div className="flex items-end justify-between h-48 pt-6 border-b border-l px-2 pb-1">
                                     {stats.revenueTimeline.map((item) => {
                                         if (!item._id) return null; // skip malformed/null entries
                                         const pct = (item.revenue / maxRevenue) * 100;
@@ -216,15 +226,15 @@ const Dashboard = ({ token }) => {
                                                     style={{ height: `${Math.max(pct, 5)}%` }} 
                                                     className="w-3/4 sm:w-1/2 bg-blue-500 hover:bg-blue-600 rounded-t transition-all cursor-pointer"
                                                 />
+                                                {/* Date Label */}
+                                                <span className="text-[9px] text-gray-400 mt-2 font-medium truncate w-full text-center">
+                                                    {formatDate(item._id)}
+                                                </span>
                                             </div>
                                         );
                                     })}
                                 </div>
                             )}
-                            <div className="flex justify-between text-[10px] text-gray-400 mt-2 px-1">
-                                <span>30 days ago</span>
-                                <span>Today</span>
-                            </div>
                         </div>
 
                         {/* Chart 2: User Growth Timeline */}
@@ -233,7 +243,7 @@ const Dashboard = ({ token }) => {
                             {stats.userGrowthTimeline.length === 0 ? (
                                 <div className="text-center py-20 text-gray-400 text-xs">No new users registered in the last 30 days.</div>
                             ) : (
-                                <div className="flex items-end justify-between h-48 pt-6 border-b border-l px-2">
+                                <div className="flex items-end justify-between h-48 pt-6 border-b border-l px-2 pb-1">
                                     {stats.userGrowthTimeline.map((item) => {
                                         if (!item._id) return null; // skip malformed/null entries
                                         const pct = (item.newUsers / maxNewUsers) * 100;
@@ -248,15 +258,15 @@ const Dashboard = ({ token }) => {
                                                     style={{ height: `${Math.max(pct, 5)}%` }} 
                                                     className="w-3/4 sm:w-1/2 bg-purple-500 hover:bg-purple-600 rounded-t transition-all cursor-pointer"
                                                 />
+                                                {/* Date Label */}
+                                                <span className="text-[9px] text-gray-400 mt-2 font-medium truncate w-full text-center">
+                                                    {formatDate(item._id)}
+                                                </span>
                                             </div>
                                         );
                                     })}
                                 </div>
                             )}
-                            <div className="flex justify-between text-[10px] text-gray-400 mt-2 px-1">
-                                <span>30 days ago</span>
-                                <span>Today</span>
-                            </div>
                         </div>
                     </div>
 
