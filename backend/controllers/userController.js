@@ -81,9 +81,11 @@ const registerUser = async (req, res) => {
         });
 
         // Send OTP email (non-blocking — don't fail registration if email fails)
-        sendEmailVerificationOTP(email, otp, name).catch(err =>
-            console.error('[Email] Failed to send verification OTP:', err.message)
-        );
+        sendEmailVerificationOTP(email, otp, name).catch(err => {
+            console.error('[Email] Failed to send verification OTP:', err.message);
+            // FALLBACK: Log OTP to console so it's visible in Render/server logs for testing
+            console.log(`\n⚡ OTP FALLBACK (email failed) → ${email}: ★ ${otp} ★\n`);
+        });
 
         res.json({
             success: true,

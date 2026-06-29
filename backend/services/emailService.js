@@ -1,71 +1,85 @@
+import { Resend } from 'resend';
 import nodemailer from 'nodemailer';
 
 /**
- * Email Service
+ * Email Service — Priority order:
  *
- * Uses Nodemailer with Gmail SMTP (free, 500 emails/day).
- * To use:
- *   1. Enable 2FA on your Gmail account
- *   2. Go to Google Account → Security → App Passwords
- *   3. Create an App Password for "Mail"
- *   4. Set GMAIL_USER and GMAIL_APP_PASSWORD in .env
+ * 1. RESEND_API_KEY set      → Use Resend HTTP API (works on ALL platforms including Render free tier)
+ * 2. GMAIL_USER + PASSWORD   → Use Gmail SMTP (works on dedicated servers, NOT on Render free tier)
+ * 3. Neither set             → Log to console (dev mode / OTP visible in Render logs)
  *
- * If env vars are not set → emails are logged to console (dev mode)
+ * WHY Resend instead of Gmail on Render:
+ * Render free tier blocks all outbound SMTP ports (25, 465, 587) to prevent spam abuse.
+ * Resend uses HTTPS (port 443) which is never blocked → always works.
  *
- * In production: swap SMTP credentials for SendGrid / SES without any
- * code change — just update the createTransport config. This is the
- * "transport abstraction" pattern used in enterprise Node.js apps.
+ * Setup Resend (free, 3 mins):
+ *   1. Sign up at https://resend.com (free, no credit card)
+ *   2. Dashboard → API Keys → Create API Key
+ *   3. Add to .env: RESEND_API_KEY=re_xxxxxxxxxx
+ *   4. Add to Render: Environment → RESEND_API_KEY
+ *
+ * Free tier: 3000 emails/month, 100/day.
+ * From address on free tier: onboarding@resend.dev (works for testing)
+ * For custom from address: verify your domain in Resend dashboard.
  */
 
-// ── Transporter setup ─────────────────────────────────────────────────────
-let transporter;
+// ── Determine which transport to use ─────────────────────────────────────
+let sendEmail; // Unified send function
 
-if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
-    // Production: Gmail SMTP — force IPv4 (Render/Railway free tier blocks IPv6)
-    transporter = nodemailer.createTransport({
+if (process.env.RESEND_API_KEY) {
+    // ── Option 1: Resend (HTTP API — works on Render, Vercel, Railway) ──
+    const resend = new Resend(process.env.RESEND_API_KEY);
+    const FROM = process.env.RESEND_FROM_EMAIL || 'ShopEase <onboarding@resend.dev>';
+
+    console.log('📧 Email service: Resend HTTP API ✅ (works on Render free tier)');
+
+    sendEmail = async ({ to, subject, html, text }) => {
+        const { data, error } = await resend.emails.send({ from: FROM, to, subject, html, text });
+        if (error) throw new Error(`Resend error: ${error.message}`);
+        return data;
+    };
+
+} else if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
+    // ── Option 2: Gmail SMTP (works on dedicated servers, NOT on Render free tier) ──
+    console.log('📧 Email service: Gmail SMTP (note: may fail on Render free tier)');
+
+    const transporter = nodemailer.createTransport({
         host: 'smtp.gmail.com',
         port: 587,
-        secure: false,          // TLS via STARTTLS
-        family: 4,              // Force IPv4 — avoids ENETUNREACH on Render free tier
+        secure: false,
+        family: 4,              // Force IPv4
         auth: {
             user: process.env.GMAIL_USER,
             pass: process.env.GMAIL_APP_PASSWORD,
         },
-        tls: {
-            rejectUnauthorized: false // Allow self-signed certs in dev
-        }
     });
-    console.log('📧 Email service: Gmail SMTP (IPv4 forced)');
+
+    const FROM = `"ShopEase" <${process.env.GMAIL_USER}>`;
+
+    sendEmail = async ({ to, subject, html, text }) => {
+        return transporter.sendMail({ from: FROM, to, subject, html, text });
+    };
+
 } else {
-    // Development: log emails to console instead of sending
-    console.warn('📧 Email service: Console mode (set GMAIL_USER + GMAIL_APP_PASSWORD in .env for real emails)');
-    transporter = {
-        sendMail: async (options) => {
-            console.log('\n─────────── 📧 EMAIL (DEV MODE) ───────────');
-            console.log('To:', options.to);
-            console.log('Subject:', options.subject);
-            console.log('Body:', options.text || options.html);
-            console.log('────────────────────────────────────────────\n');
-            return { messageId: 'dev-' + Date.now() };
-        }
+    // ── Option 3: Console fallback (dev mode) ──
+    console.warn('📧 Email service: Console mode — OTP will appear in server logs');
+    sendEmail = async ({ to, subject, text, _otp }) => {
+        console.log('\n══════════ 📧 EMAIL (CONSOLE MODE) ══════════');
+        console.log(`To:      ${to}`);
+        console.log(`Subject: ${subject}`);
+        if (_otp) console.log(`OTP:     ★ ${_otp} ★  (copy this to verify)`);
+        else      console.log(`Body:    ${text}`);
+        console.log('═════════════════════════════════════════════\n');
     };
 }
 
-const FROM_ADDRESS = process.env.GMAIL_USER
-    ? `"ShopEase" <${process.env.GMAIL_USER}>`
-    : '"ShopEase" <noreply@shopease.com>';
-
 // ── Email Templates ───────────────────────────────────────────────────────
 
-/**
- * Send OTP for email verification
- * Called during registration
- */
 export const sendEmailVerificationOTP = async (email, otp, name) => {
-    await transporter.sendMail({
-        from: FROM_ADDRESS,
+    await sendEmail({
         to: email,
         subject: `${otp} — Verify your ShopEase account`,
+        _otp: otp, // Used by console fallback only
         html: `
             <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:32px;border:1px solid #e5e7eb;border-radius:12px;">
                 <h2 style="color:#1a1a2e;margin:0 0 8px;">Welcome to ShopEase, ${name}! 👋</h2>
@@ -82,14 +96,11 @@ export const sendEmailVerificationOTP = async (email, otp, name) => {
     });
 };
 
-/**
- * Send OTP for password reset
- */
 export const sendPasswordResetOTP = async (email, otp, name) => {
-    await transporter.sendMail({
-        from: FROM_ADDRESS,
+    await sendEmail({
         to: email,
         subject: `${otp} — ShopEase Password Reset`,
+        _otp: otp,
         html: `
             <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:32px;border:1px solid #e5e7eb;border-radius:12px;">
                 <h2 style="color:#1a1a2e;margin:0 0 8px;">Password Reset 🔐</h2>
@@ -99,19 +110,15 @@ export const sendPasswordResetOTP = async (email, otp, name) => {
                     <div style="font-size:40px;font-weight:900;letter-spacing:10px;color:#dc2626;">${otp}</div>
                     <p style="margin:8px 0 0;color:#9ca3af;font-size:13px;">Expires in <strong>10 minutes</strong></p>
                 </div>
-                <p style="color:#6b7280;font-size:13px;margin:0;">⚠️ If you didn't request this, someone may be trying to access your account. <strong>Ignore this email</strong> — your password will NOT change.</p>
+                <p style="color:#6b7280;font-size:13px;margin:0;">If you didn't request this, ignore this email — your password won't change.</p>
             </div>
         `,
         text: `Your ShopEase password reset code is: ${otp}\nExpires in 10 minutes.`
     });
 };
 
-/**
- * Send account lockout alert
- */
 export const sendAccountLockedAlert = async (email, name, lockDurationMinutes) => {
-    await transporter.sendMail({
-        from: FROM_ADDRESS,
+    await sendEmail({
         to: email,
         subject: '⚠️ ShopEase — Account Temporarily Locked',
         html: `
@@ -120,40 +127,34 @@ export const sendAccountLockedAlert = async (email, name, lockDurationMinutes) =
                 <p style="color:#374151;margin:0 0 16px;">Hi ${name}, your account has been temporarily locked due to multiple failed login attempts.</p>
                 <div style="background:#fef2f2;border-radius:8px;padding:16px;margin:0 0 24px;">
                     <p style="margin:0;color:#dc2626;font-weight:600;">Locked for: ${lockDurationMinutes} minutes</p>
-                    <p style="margin:4px 0 0;color:#6b7280;font-size:13px;">You can try again after the lockout period.</p>
                 </div>
-                <p style="color:#6b7280;font-size:13px;margin:0;">If this wasn't you, your password may be compromised. Consider resetting it immediately.</p>
+                <p style="color:#6b7280;font-size:13px;">If this wasn't you, consider resetting your password.</p>
             </div>
         `,
-        text: `Your ShopEase account has been locked for ${lockDurationMinutes} minutes due to multiple failed login attempts.`
+        text: `Your ShopEase account has been locked for ${lockDurationMinutes} minutes.`
     });
 };
 
-/**
- * Send order confirmation email
- */
 export const sendOrderConfirmation = async (email, name, orderId, items, total) => {
     const itemRows = items.map(i =>
         `<tr><td style="padding:8px">${i.name} (${i.size})</td><td style="padding:8px;text-align:right">×${i.quantity}</td><td style="padding:8px;text-align:right">$${i.price}</td></tr>`
     ).join('');
 
-    await transporter.sendMail({
-        from: FROM_ADDRESS,
+    await sendEmail({
         to: email,
         subject: `✅ Order Confirmed — #${orderId.slice(-8).toUpperCase()}`,
         html: `
             <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:32px;border:1px solid #e5e7eb;border-radius:12px;">
                 <h2 style="color:#1a1a2e;margin:0 0 4px;">Order Confirmed! 🎉</h2>
                 <p style="color:#6b7280;margin:0 0 24px;">Hi ${name}, we've received your order.</p>
-                <p style="font-size:13px;color:#9ca3af;margin:0 0 8px;">Order ID: <strong>#${orderId.slice(-8).toUpperCase()}</strong></p>
                 <table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:14px;">
                     <thead><tr style="background:#f3f4f6"><th style="padding:8px;text-align:left">Item</th><th style="padding:8px">Qty</th><th style="padding:8px;text-align:right">Price</th></tr></thead>
                     <tbody>${itemRows}</tbody>
                     <tfoot><tr style="border-top:2px solid #e5e7eb"><td colspan="2" style="padding:8px;font-weight:700">Total</td><td style="padding:8px;text-align:right;font-weight:700">$${total}</td></tr></tfoot>
                 </table>
-                <p style="color:#6b7280;font-size:13px;">We'll send you another email when your order ships. Thank you for shopping with ShopEase! 🛍️</p>
+                <p style="color:#6b7280;font-size:13px;">Thank you for shopping with ShopEase! 🛍️</p>
             </div>
         `,
-        text: `Order #${orderId.slice(-8).toUpperCase()} confirmed! Total: $${total}. Thank you for shopping with ShopEase!`
+        text: `Order #${orderId.slice(-8).toUpperCase()} confirmed! Total: $${total}.`
     });
 };
