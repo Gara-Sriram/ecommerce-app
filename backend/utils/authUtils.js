@@ -1,5 +1,5 @@
 import jwt from 'jsonwebtoken';
-import argon2 from 'argon2';
+import bcrypt from 'bcryptjs';   // Pure JS — works on Vercel/Lambda (argon2 requires native compilation)
 import crypto from 'crypto';
 import RefreshToken from '../models/refreshTokenModel.js';
 
@@ -18,25 +18,24 @@ const ACCESS_TOKEN_EXPIRY = '15m';
 const REFRESH_TOKEN_EXPIRY_DAYS = 7;
 const REFRESH_TOKEN_EXPIRY_MS = REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
 
-// ── Password Hashing (Argon2id) ───────────────────────────────────────────
+// ── Password Hashing (bcryptjs) ──────────────────────────────────────────
 /**
- * Hash a password with Argon2id
- * Argon2id is the recommended variant (hybrid of Argon2i + Argon2d):
- * - Memory-hard (resistant to GPU/ASIC attacks)
- * - Won Password Hashing Competition 2015
- * - OWASP recommended
+ * Hash a password with bcryptjs (pure JavaScript — works on Vercel/Lambda)
+ *
+ * Note: bcryptjs is still highly secure (industry standard).
+ * Argon2id is theoretically stronger but requires native C++ compilation
+ * which breaks on serverless platforms (Vercel, AWS Lambda).
+ * In a dedicated Node.js server, you'd switch to argon2id.
+ *
+ * Cost factor 12 = ~250ms per hash on modern hardware (good balance)
  */
 export const hashPassword = async (password) => {
-    return argon2.hash(password, {
-        type: argon2.argon2id,
-        memoryCost: 2 ** 16,    // 64 MB RAM per hash operation
-        timeCost: 3,            // 3 iterations
-        parallelism: 1,
-    });
+    const salt = await bcrypt.genSalt(12);
+    return bcrypt.hash(password, salt);
 };
 
 export const verifyPassword = async (password, hash) => {
-    return argon2.verify(hash, password);
+    return bcrypt.compare(password, hash);
 };
 
 // ── Access Token ──────────────────────────────────────────────────────────

@@ -24,15 +24,25 @@ app.use(helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' }
 }))
 
-// CORS — allow your frontend + admin origins
+// CORS — dynamic origin check
+// Accepts: localhost dev ports + any *.vercel.app deployment (frontend + admin)
+const allowedOrigins = [
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'http://localhost:3000',
+];
+
 app.use(cors({
-    origin: [
-        'http://localhost:5173',
-        'http://localhost:5174',
-        'https://ecommerce-app-yio8.vercel.app',   // frontend
-        'https://ecommerce-app-qh9m.vercel.app'    // admin
-    ],
-    credentials: true
+    origin: (origin, callback) => {
+        // Allow requests with no origin (mobile apps, Postman, curl)
+        if (!origin) return callback(null, true);
+        // Allow any vercel.app subdomain (covers all your deployments)
+        if (origin.endsWith('.vercel.app') || allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+        callback(new Error(`CORS: origin ${origin} not allowed`));
+    },
+    credentials: true   // Required for cookies (refresh token)
 }))
 
 // Parse JSON bodies
