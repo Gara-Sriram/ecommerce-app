@@ -18,6 +18,10 @@ import { errorHandler } from './middleware/errorHandler.js'
 const app = express()
 const port = process.env.PORT || 4000
 
+// Trust reverse proxy (Render, Railway, Heroku, Vercel)
+// Required for: correct client IP in rate limiter, secure cookies
+app.set('trust proxy', 1)
+
 // ─── Security Middleware ───────────────────────────
 // Sets secure HTTP response headers (XSS, clickjacking, MIME sniffing protection)
 app.use(helmet({

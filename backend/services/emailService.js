@@ -21,15 +21,21 @@ import nodemailer from 'nodemailer';
 let transporter;
 
 if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
-    // Production: real Gmail SMTP
+    // Production: Gmail SMTP — force IPv4 (Render/Railway free tier blocks IPv6)
     transporter = nodemailer.createTransport({
-        service: 'gmail',
+        host: 'smtp.gmail.com',
+        port: 587,
+        secure: false,          // TLS via STARTTLS
+        family: 4,              // Force IPv4 — avoids ENETUNREACH on Render free tier
         auth: {
             user: process.env.GMAIL_USER,
-            pass: process.env.GMAIL_APP_PASSWORD, // App Password, NOT your Gmail password
+            pass: process.env.GMAIL_APP_PASSWORD,
         },
+        tls: {
+            rejectUnauthorized: false // Allow self-signed certs in dev
+        }
     });
-    console.log('📧 Email service: Gmail SMTP');
+    console.log('📧 Email service: Gmail SMTP (IPv4 forced)');
 } else {
     // Development: log emails to console instead of sending
     console.warn('📧 Email service: Console mode (set GMAIL_USER + GMAIL_APP_PASSWORD in .env for real emails)');
