@@ -65,10 +65,13 @@ const registerUser = async (req, res) => {
         });
         await user.save();
 
-        // Send email verification OTP
-        const otp = generateOTP(); // 6-digit random OTP
-        const otpHash = hashOTP(otp);  // SHA-256 hash for storage
-        const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+        // Generate and save OTP
+        const otp = generateOTP();
+        const otpHash = hashOTP(otp);  // sync — no await needed
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+        // Always log OTP to console (visible in Render logs)
+        console.log(`\n📬 OTP for ${email}: ★ ${otp} ★ (expires in 10 min)\n`);
 
         // Delete any previous OTPs for this email
         await OtpModel.deleteMany({ email: email.toLowerCase(), type: 'EMAIL_VERIFY' });
@@ -80,11 +83,9 @@ const registerUser = async (req, res) => {
             expiresAt
         });
 
-        // Send OTP email (non-blocking — don't fail registration if email fails)
+        // Send OTP email (non-blocking)
         sendEmailVerificationOTP(email, otp, name).catch(err => {
             console.error('[Email] Failed to send verification OTP:', err.message);
-            // FALLBACK: Log OTP to console so it's visible in Render/server logs for testing
-            console.log(`\n⚡ OTP FALLBACK (email failed) → ${email}: ★ ${otp} ★\n`);
         });
 
         res.json({
@@ -160,16 +161,23 @@ const resendOTP = async (req, res) => {
         if (!user) return res.json({ success: false, message: 'No account found with this email.' });
 
         const otp = generateOTP();
-        const otpHash = hashOTP(otp);
+        const otpHash = hashOTP(otp); // sync
         const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+        // Always log OTP to console (visible in Render logs)
+        console.log(`\n📬 Resend OTP for ${email} [${type}]: ★ ${otp} ★ (expires in 10 min)\n`);
 
         await OtpModel.deleteMany({ email: email.toLowerCase(), type });
         await OtpModel.create({ email: email.toLowerCase(), otpHash, type, expiresAt });
 
         if (type === 'EMAIL_VERIFY') {
-            sendEmailVerificationOTP(email, otp, user.name).catch(console.error);
+            sendEmailVerificationOTP(email, otp, user.name).catch(err => {
+                console.error('[Email] Failed to send verification OTP:', err.message);
+            });
         } else if (type === 'PASSWORD_RESET') {
-            sendPasswordResetOTP(email, otp, user.name).catch(console.error);
+            sendPasswordResetOTP(email, otp, user.name).catch(err => {
+                console.error('[Email] Failed to send password reset OTP:', err.message);
+            });
         }
 
         res.json({ success: true, message: 'New OTP sent to your email.' });
@@ -383,13 +391,18 @@ const forgotPassword = async (req, res) => {
         }
 
         const otp = generateOTP();
-        const otpHash = hashOTP(otp);
+        const otpHash = hashOTP(otp); // sync
         const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+        // Always log OTP to console (visible in Render logs)
+        console.log(`\n📬 Password Reset OTP for ${email}: ★ ${otp} ★ (expires in 10 min)\n`);
 
         await OtpModel.deleteMany({ email: email.toLowerCase(), type: 'PASSWORD_RESET' });
         await OtpModel.create({ email: email.toLowerCase(), otpHash, type: 'PASSWORD_RESET', expiresAt });
 
-        sendPasswordResetOTP(email, otp, user.name).catch(console.error);
+        sendPasswordResetOTP(email, otp, user.name).catch(err => {
+            console.error('[Email] Failed to send password reset OTP:', err.message);
+        });
 
         res.json({ success: true, message: 'If this email exists, a reset code was sent.' });
     } catch (error) {
