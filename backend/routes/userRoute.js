@@ -14,10 +14,13 @@ import {
     adminLogin,
     addToWishlist,
     removeFromWishlist,
-    getWishlist
+    getWishlist,
+    listAllUsers,
+    updateUserRole
 } from '../controllers/userController.js';
 import { authLimiter, apiLimiter } from '../middleware/rateLimiter.js';
 import authMiddleware from '../middleware/auth.js';
+import adminAuth from '../middleware/adminAuth.js';
 
 const userRouter = express.Router();
 
@@ -47,5 +50,9 @@ userRouter.get('/wishlist', authMiddleware, getWishlist);
 // ── Password reset ────────────────────────────────────────────────────────
 userRouter.post('/forgot-password', authLimiter, forgotPassword);
 userRouter.post('/reset-password', authLimiter, resetPassword);
+
+// ── Admin: User and Role Management (RBAC) ────────────────────────────────
+userRouter.get('/admin/users', adminAuth, listAllUsers);
+userRouter.post('/admin/update-role', adminAuth, updateUserRole);
 
 export default userRouter;

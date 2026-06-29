@@ -235,4 +235,90 @@ const updateStatus = async (req,res)=>{
 
 }
 
-export {verifyRazorpay,placeOrder,placeOrderStripe,placeOrderRazorpay,allOrders,userOrders,updateStatus,verifyStripe}
+// Get Admin Dashboard Stats (Revenue, User Growth, Top Selling)
+const getAdminDashboardStats = async (req, res) => {
+    try {
+        const productModel = (await import('../models/productModel.js')).default;
+        
+        const totalProducts = await productModel.countDocuments();
+        const totalUsers = await userModel.countDocuments();
+        const totalOrders = await orderModel.countDocuments();
+
+        // 1. Calculate Total Revenue (completed orders / paid)
+        const revenueResult = await orderModel.aggregate([
+            { $match: { status: { $ne: 'Cancelled' } } },
+            { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]);
+        const totalRevenue = revenueResult[0]?.total || 0;
+
+        // 2. Revenue & Orders timeline (Last 30 Days)
+        const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+        const revenueTimeline = await orderModel.aggregate([
+            { $match: { date: { $gte: thirtyDaysAgo }, status: { $ne: 'Cancelled' } } },
+            {
+                $project: {
+                    amount: 1,
+                    dateObj: { $toDate: '$date' }
+                }
+            },
+            {
+                $group: {
+                    _id: { $dateToString: { format: '%Y-%m-%d', date: '$dateObj' } },
+                    revenue: { $sum: '$amount' },
+                    ordersCount: { $sum: 1 }
+                }
+            },
+            { $sort: { _id: 1 } }
+        ]);
+
+        // 3. User Growth Timeline (Last 30 Days)
+        const userGrowthTimeline = await userModel.aggregate([
+            { $match: { createdAt: { $gte: new Date(thirtyDaysAgo) } } },
+            {
+                $group: {
+                    _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+                    newUsers: { $sum: 1 }
+                }
+            },
+            { $sort: { _id: 1 } }
+        ]);
+
+        // 4. Top Selling Products (based on quantities ordered)
+        const topSellingProducts = await orderModel.aggregate([
+            { $match: { status: { $ne: 'Cancelled' } } },
+            { $unwind: '$items' },
+            {
+                $group: {
+                    _id: '$items._id',
+                    name: { $first: '$items.name' },
+                    image: { $first: '$items.image' },
+                    price: { $first: '$items.price' },
+                    category: { $first: '$items.category' },
+                    totalQuantity: { $sum: '$items.quantity' },
+                    totalSales: { $sum: { $multiply: ['$items.price', '$items.quantity'] } }
+                }
+            },
+            { $sort: { totalQuantity: -1 } },
+            { $limit: 5 }
+        ]);
+
+        res.json({
+            success: true,
+            stats: {
+                totalRevenue,
+                totalOrders,
+                totalProducts,
+                totalUsers,
+                revenueTimeline,
+                userGrowthTimeline,
+                topSellingProducts
+            }
+        });
+
+    } catch (error) {
+        console.error('[DashboardStats Error]', error);
+        res.json({ success: false, message: error.message });
+    }
+};
+
+export {verifyRazorpay,placeOrder,placeOrderStripe,placeOrderRazorpay,allOrders,userOrders,updateStatus,verifyStripe,getAdminDashboardStats}

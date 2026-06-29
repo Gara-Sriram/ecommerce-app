@@ -467,18 +467,34 @@ const resetPassword = async (req, res) => {
     }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ADMIN LOGIN — POST /api/user/admin
-// ─────────────────────────────────────────────────────────────────────────────
 const adminLogin = async (req, res) => {
     try {
         const { email, password } = req.body;
 
-        if (email !== process.env.ADMIN_EMAIL || password !== process.env.ADMIN_PASSWORD) {
+        // 1. Check Super Admin (from env)
+        if (email === process.env.ADMIN_EMAIL && password === process.env.ADMIN_PASSWORD) {
+            const token = generateAccessToken('admin', email, 'admin');
+            return res.json({ success: true, token });
+        }
+
+        // 2. Check Database Admins (role-based)
+        const user = await userModel.findOne({ email: email.toLowerCase() });
+        if (!user) {
             return res.json({ success: false, message: 'Invalid admin credentials.' });
         }
 
-        const token = generateAccessToken('admin', email, 'admin');
+        if (user.role !== 'admin') {
+            return res.json({ success: false, message: 'Access denied. You do not have admin permissions.' });
+        }
+
+        // Verify password
+        const isPasswordValid = await verifyPassword(password, user.password);
+        if (!isPasswordValid) {
+            return res.json({ success: false, message: 'Invalid admin credentials.' });
+        }
+
+        // Generate token
+        const token = generateAccessToken(user._id, user.email, 'admin');
         res.json({ success: true, token });
 
     } catch (error) {
@@ -549,6 +565,51 @@ const getWishlist = async (req, res) => {
     }
 };
 
+// ── Admin: List all users — GET /api/user/admin/users
+const listAllUsers = async (req, res) => {
+    try {
+        const users = await userModel.find({})
+            .select('-password -cartData -wishlist') // Exclude sensitive fields
+            .sort({ createdAt: -1 });
+
+        res.json({ success: true, users });
+    } catch (error) {
+        res.json({ success: false, message: error.message });
+    }
+};
+
+// ── Admin: Update user role — POST /api/user/admin/update-role
+const updateUserRole = async (req, res) => {
+    try {
+        const { targetUserId, newRole } = req.body;
+
+        if (!targetUserId || !newRole) {
+            return res.json({ success: false, message: 'User ID and role are required.' });
+        }
+
+        if (!['user', 'admin'].includes(newRole)) {
+            return res.json({ success: false, message: 'Invalid role.' });
+        }
+
+        // Cannot modify role of Super Admin (if it matched legacy email, it is protected)
+        const user = await userModel.findById(targetUserId);
+        if (!user) {
+            return res.json({ success: false, message: 'User not found.' });
+        }
+
+        if (user.email === process.env.ADMIN_EMAIL) {
+            return res.json({ success: false, message: 'Cannot modify role of the primary Super Admin.' });
+        }
+
+        user.role = newRole;
+        await user.save();
+
+        res.json({ success: true, message: `User role updated to ${newRole}.` });
+    } catch (error) {
+        res.json({ success: false, message: error.message });
+    }
+};
+
 export {
     registerUser,
     verifyEmail,
@@ -565,4 +626,6 @@ export {
     addToWishlist,
     removeFromWishlist,
     getWishlist,
+    listAllUsers,
+    updateUserRole,
 };
