@@ -44,7 +44,14 @@ const registerUser = async (req, res) => {
         // Check if already registered
         const existingUser = await userModel.findOne({ email: email.toLowerCase() });
         if (existingUser) {
-            return res.json({ success: false, message: 'An account with this email already exists.' });
+            if (existingUser.isEmailVerified) {
+                // Fully registered user — block
+                return res.json({ success: false, message: 'An account with this email already exists.' });
+            } else {
+                // Incomplete registration (OTP never verified) — delete and allow fresh start
+                await userModel.deleteOne({ _id: existingUser._id });
+                await OtpModel.deleteMany({ email: email.toLowerCase() });
+            }
         }
 
         // Hash password with Argon2id (replaces bcrypt)
