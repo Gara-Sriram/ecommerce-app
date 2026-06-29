@@ -251,10 +251,9 @@ const getAdminDashboardStats = async (req, res) => {
         ]);
         const totalRevenue = revenueResult[0]?.total || 0;
 
-        // 2. Revenue & Orders timeline (Last 30 Days)
-        const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+        // 2. Revenue & Orders timeline (Last 30 active days that have sales)
         const revenueTimeline = await orderModel.aggregate([
-            { $match: { date: { $gte: thirtyDaysAgo }, status: { $ne: 'Cancelled' } } },
+            { $match: { status: { $ne: 'Cancelled' } } },
             {
                 $project: {
                     amount: 1,
@@ -268,19 +267,22 @@ const getAdminDashboardStats = async (req, res) => {
                     ordersCount: { $sum: 1 }
                 }
             },
-            { $sort: { _id: 1 } }
+            { $sort: { _id: -1 } }, // Get most recent dates first
+            { $limit: 30 },         // Limit to last 30 active days
+            { $sort: { _id: 1 } }   // Sort chronologically for chart display
         ]);
 
-        // 3. User Growth Timeline (Last 30 Days)
+        // 3. User Growth Timeline (Last 30 active days that have registrations)
         const userGrowthTimeline = await userModel.aggregate([
-            { $match: { createdAt: { $gte: new Date(thirtyDaysAgo) } } },
             {
                 $group: {
                     _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
                     newUsers: { $sum: 1 }
                 }
             },
-            { $sort: { _id: 1 } }
+            { $sort: { _id: -1 } }, // Get most recent dates first
+            { $limit: 30 },         // Limit to last 30 active days
+            { $sort: { _id: 1 } }   // Sort chronologically for chart display
         ]);
 
         // 4. Top Selling Products (based on quantities ordered)
